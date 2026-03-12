@@ -335,8 +335,11 @@ function compute(){
     if(G.x<TL+BALL_R||G.x>TR-BALL_R||G.y<TT+BALL_R||G.y>TB-BALL_R) continue;
 
     // --- Target → Pocket path check ---
-    // (after collision target must travel toward pocket unobstructed)
-    if(segBlocked(TGT,pocket,['white','target'],BALL_R*1.9)) continue;
+    // A ball of radius R needs 2R clearance from any obstacle center
+    if(segBlocked(TGT,pocket,['white','target'],BALL_R*2)){
+      log('warn',`  ${pocket.label}袋：目標球→袋口路徑被阻，跳過`);
+      continue;
+    }
 
     // --- Try 1-bounce on each wall ---
     for(let wall=0;wall<4;wall++){
@@ -348,15 +351,21 @@ function compute(){
 
       // --- Validate: bp must not be near any pocket ---
       if(nearPocket(bp)){
-        log('warn',`  壁面 ${WALL_NAME[wall]} 折射點靠近袋口，跳過`);
+        log('warn',`  ${WALL_NAME[wall]}：折射點靠近袋口，跳過`);
         continue;
       }
 
-      // --- White → BP: must not be blocked by obs balls ---
-      if(segBlocked(W,bp,['white'],BALL_R*1.8)) continue;
+      // --- White → BP: must not be blocked (check ALL balls except white) ---
+      if(segBlocked(W,bp,['white'],BALL_R*2)){
+        continue; // silent: too many to log
+      }
 
-      // --- BP → G: must not be blocked ---
-      if(segBlocked(bp,G,['white','target'],BALL_R*1.8)) continue;
+      // --- BP → G: must not be blocked (check obsA/obsB; skip white & target) ---
+      // This is the REFLECTED segment — obstacles must not be in this path
+      if(segBlocked(bp,G,['white','target'],BALL_R*2)){
+        log('warn',`  ${WALL_NAME[wall]}→${pocket.label}：折射路徑被障礙球阻擋，跳過`);
+        continue;
+      }
 
       // Incidence angle
       const dxIn=bp.x-W.x, dyIn=bp.y-W.y;
