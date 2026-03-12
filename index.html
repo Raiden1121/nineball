@@ -343,51 +343,76 @@ function compute(){
 
     // --- Try 1-bounce on each wall ---
     for(let wall=0;wall<4;wall++){
-      // Reflect ghost ball through wall
       const Grefl=reflectPt(G,wall);
-      // Bounce point = intersection of line(White→Grefl) with wall
       const bp=intersectWall(W,Grefl,wall);
       if(!bpValid(bp,wall)) continue;
+      if(nearPocket(bp)) continue;
+      if(segBlocked(W,bp,['white'],BALL_R*2)) continue;
+      if(segBlocked(bp,G,['white','target'],BALL_R*2)) continue;
 
-      // --- Validate: bp must not be near any pocket ---
-      if(nearPocket(bp)){
-        log('warn',`  ${WALL_NAME[wall]}：折射點靠近袋口，跳過`);
-        continue;
-      }
-
-      // --- White → BP: must not be blocked (check ALL balls except white) ---
-      if(segBlocked(W,bp,['white'],BALL_R*2)){
-        continue; // silent: too many to log
-      }
-
-      // --- BP → G: must not be blocked (check obsA/obsB; skip white & target) ---
-      // This is the REFLECTED segment — obstacles must not be in this path
-      if(segBlocked(bp,G,['white','target'],BALL_R*2)){
-        log('warn',`  ${WALL_NAME[wall]}→${pocket.label}：折射路徑被障礙球阻擋，跳過`);
-        continue;
-      }
-
-      // Incidence angle
       const dxIn=bp.x-W.x, dyIn=bp.y-W.y;
       const angleIn=Math.atan2(dyIn,dxIn)*180/Math.PI;
-
-      // Score: shorter total path = better
       const score=dist(W,bp)+dist(bp,G)+dist(TGT,pocket);
 
-      results.push({wall,pocket,G,bp,angleIn,score,
+      results.push({
+        bounces:1, wallLabel:WALL_NAME[wall],
+        pocket, G, bp, angleIn, score,
         path:[
-          {x:W.x,y:W.y},
-          {x:bp.x,y:bp.y},
-          {x:G.x,y:G.y},          // cue ball arrives here → hits target
-          {x:TGT.x,y:TGT.y},
+          {x:W.x,   y:W.y},
+          {x:bp.x,  y:bp.y},
+          {x:G.x,   y:G.y},
+          {x:TGT.x, y:TGT.y},
           {x:pocket.x,y:pocket.y},
         ]
       });
     }
+
+    // --- Try 2-bounce (auto fallback) ---
+    // Image method: White → Wall1(bp1) → Wall2(bp2) → G
+    // G' = reflect G through w2; G'' = reflect G' through w1
+    // bp1 = line(W→G'') ∩ w1;  bp2 = line(bp1→G') ∩ w2
+    for(let w1=0;w1<4;w1++){
+      for(let w2=0;w2<4;w2++){
+        if(w1===w2) continue;
+        // Skip opposing walls (ball would have to pass through table)
+        if((w1===0&&w2===1)||(w1===1&&w2===0)) continue;
+        if((w1===2&&w2===3)||(w1===3&&w2===2)) continue;
+
+        const Gp  = reflectPt(G,  w2);
+        const Gpp = reflectPt(Gp, w1);
+
+        const bp1=intersectWall(W,   Gpp, w1); if(!bpValid(bp1,w1)) continue;
+        if(nearPocket(bp1)) continue;
+        const bp2=intersectWall(bp1, Gp,  w2); if(!bpValid(bp2,w2)) continue;
+        if(nearPocket(bp2)) continue;
+
+        if(segBlocked(W,   bp1, ['white'],         BALL_R*2)) continue;
+        if(segBlocked(bp1, bp2, ['white'],          BALL_R*2)) continue;
+        if(segBlocked(bp2, G,   ['white','target'], BALL_R*2)) continue;
+
+        const dxIn=bp1.x-W.x, dyIn=bp1.y-W.y;
+        const angleIn=Math.atan2(dyIn,dxIn)*180/Math.PI;
+        const score=(dist(W,bp1)+dist(bp1,bp2)+dist(bp2,G)+dist(TGT,pocket))*1.25;
+
+        results.push({
+          bounces:2,
+          wallLabel:`${WALL_NAME[w1]} → ${WALL_NAME[w2]}`,
+          pocket, G, bp:bp1, bp2, angleIn, score,
+          path:[
+            {x:W.x,   y:W.y},
+            {x:bp1.x, y:bp1.y},
+            {x:bp2.x, y:bp2.y},
+            {x:G.x,   y:G.y},
+            {x:TGT.x, y:TGT.y},
+            {x:pocket.x,y:pocket.y},
+          ]
+        });
+      }
+    }
   }
 
   if(results.length===0){
-    log('err','✗ 找不到可行反彈路徑');
+    log('err','✗ 找不到可行反彈路徑（1次 & 2次反彈均無解）');
     setBanner('bad','❌ 無可行路徑 — 嘗試切換袋口或調整球位');
     setInfoCards(null);
     return null;
@@ -395,11 +420,12 @@ function compute(){
 
   results.sort((a,b)=>a.score-b.score);
   const best=results[0];
-  log('ok',`✓ 找到 ${results.length} 條路徑`);
-  log('ok',`  最佳：${WALL_NAME[best.wall]} → ${best.pocket.label}袋`);
+  const tag=best.bounces===1?'1次反彈':'2次反彈';
+  log('ok',`✓ 找到 ${results.length} 條路徑（${tag}最優）`);
+  log('ok',`  最佳：${best.wallLabel} → ${best.pocket.label}袋`);
   log('info2',`  入射角：${best.angleIn.toFixed(1)}°`);
   log('info2',`  路徑分：${best.score.toFixed(0)}`);
-  setBanner('ok',`✅ 已找到最佳路徑 — 反彈至${best.pocket.label}袋`);
+  setBanner('ok',`✅ 已找到最佳路徑（${tag}）— 反彈至${best.pocket.label}袋`);
   setInfoCards(best);
   return best;
 }
@@ -417,6 +443,7 @@ function recompute(){
   drawScene(null);
 }
 
+
 function animShot(){
   stopAnim();
   currentResult=compute();
@@ -424,20 +451,19 @@ function animShot(){
 
   const r=currentResult;
   const spd=parseFloat(document.getElementById('spd').value);
+  const n=r.path.length; // 5 for 1-bounce, 6 for 2-bounce
 
-  /* Animation path:
-     Phase 1 (cue ball): W → BP → G
-     Phase 2 (target): TGT → Pocket
-  */
-  const cuePath=[r.path[0],r.path[1],r.path[2]]; // W,BP,G
-  const tgtStart={x:r.path[3].x, y:r.path[3].y};
-  const tgtEnd  ={x:r.path[4].x, y:r.path[4].y};
+  // Cue ball: path[0..n-3] (W → bps → G)
+  // Target:   path[n-3] is TGT, path[n-1] is Pocket
+  const cuePath=r.path.slice(0, n-2);   // [W, bp(s), G]
+  const tgtStart=r.path[n-2];           // TGT
+  const tgtEnd  =r.path[n-1];           // Pocket
 
   animState={
     phase:'cue',
     cuePath, tgtStart, tgtEnd,
-    cueBall:{x:r.path[0].x,y:r.path[0].y},
-    tgtBall:{x:r.path[3].x,y:r.path[3].y},
+    cueBall:{x:cuePath[0].x,y:cuePath[0].y},
+    tgtBall:{x:tgtStart.x,y:tgtStart.y},
     seg:0, t:0, spd,
     done:false,
   };
@@ -452,7 +478,7 @@ function animShot(){
       if(s.t>=1){
         s.t=0;s.seg++;
         if(s.seg>=s.cuePath.length-1){
-          s.phase='target';s.seg=0;
+          s.phase='target';s.t=0;
         }
       }else{
         s.cueBall=lerp(from,to,s.t);
@@ -531,36 +557,45 @@ function drawPockets(){
 
 /* --- Path guides --- */
 function drawPath(r,s){
-  // Direct blocked line (red)
+  const path=r.path;
+  const n=path.length; // 5 for 1-bounce, 6 for 2-bounce
+  // path layout: [W, bp1, (bp2), G, TGT, Pocket]
+  // cue segments: 0..n-3  (all but last two)
+  // target segment: n-2 → n-1
+
+  // Direct blocked line (red dashed)
   ctx.beginPath();
   ctx.moveTo(balls.white.x,balls.white.y);
   ctx.lineTo(balls.target.x,balls.target.y);
-  ctx.strokeStyle='rgba(239,68,68,.3)';ctx.lineWidth=1.8;
+  ctx.strokeStyle='rgba(239,68,68,.28)';ctx.lineWidth=1.8;
   ctx.setLineDash([5,5]);ctx.stroke();ctx.setLineDash([]);
 
-  // White ball path: W → BP
-  drawSegment(r.path[0],r.path[1],'rgba(220,220,220,.85)',2.5);
-  drawArrow(r.path[0],r.path[1],'rgba(220,220,220,.9)');
-
-  // BP → G (ghost ball)
-  drawSegment(r.path[1],r.path[2],'rgba(220,220,220,.65)',2.5);
-  drawArrow(r.path[1],r.path[2],'rgba(220,220,220,.8)');
+  // Cue ball path: W → bp1 → (bp2) → G
+  const cuePts=path.slice(0,n-2);  // [W, bp1, (bp2), G]
+  for(let i=0;i<cuePts.length-1;i++){
+    const col=i===0?'rgba(220,220,220,.9)':'rgba(220,220,220,.7)';
+    drawSegment(cuePts[i],cuePts[i+1],col,2.5);
+    drawArrow(cuePts[i],cuePts[i+1],col);
+  }
 
   // Target → Pocket
-  drawSegment(r.path[3],r.path[4],'rgba(245,158,11,.8)',2.5);
-  drawArrow(r.path[3],r.path[4],'rgba(245,158,11,.9)');
+  drawSegment(path[n-2],path[n-1],'rgba(245,158,11,.8)',2.5);
+  drawArrow(path[n-2],path[n-1],'rgba(245,158,11,.9)');
 
-  // Bounce point marker
-  const bp=r.path[1];
-  ctx.beginPath();ctx.arc(bp.x,bp.y,6,0,Math.PI*2);
-  ctx.fillStyle='rgba(251,191,36,.95)';ctx.fill();
-  ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();
+  // Bounce point markers (all intermediate pts: path[1] .. path[n-3])
+  for(let i=1;i<=n-3;i++){
+    const bp=path[i];
+    ctx.beginPath();ctx.arc(bp.x,bp.y,6,0,Math.PI*2);
+    ctx.fillStyle='rgba(251,191,36,.95)';ctx.fill();
+    ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();
+    // θ label near bounce point
+    ctx.fillStyle='rgba(248,200,80,.9)';
+    ctx.font='bold 10px Inter';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('θ',bp.x,bp.y-14);
+  }
 
-  // -- Angle arcs at BP --
-  drawAngleArc(bp,r.path[0],r.path[2],r.wall);
-
-  // Ghost ball (dashed circle at G)
-  const G=r.path[2];
+  // Ghost ball (dashed circle at G = path[n-3])
+  const G=path[n-3];
   ctx.beginPath();ctx.arc(G.x,G.y,BALL_R,0,Math.PI*2);
   ctx.strokeStyle='rgba(255,255,255,.5)';ctx.lineWidth=1.5;
   ctx.setLineDash([3,3]);ctx.stroke();ctx.setLineDash([]);
@@ -662,7 +697,7 @@ function setInfoCards(r){
     return;
   }
   const bpSafe=!nearPocket(r.bp);
-  document.getElementById('iWall').textContent  =WALL_NAME[r.wall];
+  document.getElementById('iWall').textContent  =r.wallLabel;
   document.getElementById('iAngle').textContent =r.angleIn.toFixed(1)+'°';
   document.getElementById('iPocket').textContent=r.pocket.label+'袋';
   const bpEl=document.getElementById('iBP');
