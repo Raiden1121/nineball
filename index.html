@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8"/>
+<title>🎱 九球反彈模擬器</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Inter',sans-serif;
+  background:#0d1117;
+  color:#e6edf3;
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  padding:20px 12px;
+  gap:16px;
+}
+h1{
+  font-size:1.5rem;font-weight:700;
+  background:linear-gradient(135deg,#58a6ff,#3fb950);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  letter-spacing:-.5px;
+}
+.subtitle{font-size:.8rem;color:#8b949e;text-align:center}
+
+.layout{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;justify-content:center;width:100%}
+.canvas-wrap{position:relative;border-radius:10px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.65);border:2px solid #30363d;flex-shrink:0}
+canvas{display:block}
+
+/* Panel */
+.panel{
+  background:#161b22;border:1px solid #30363d;border-radius:10px;
+  padding:18px;width:290px;flex-shrink:0;display:flex;flex-direction:column;gap:14px;
+}
+.panel h3{
+  font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:1px;
+  color:#58a6ff;border-bottom:1px solid #21262d;padding-bottom:5px;margin-bottom:2px;
+}
+.legend-item{display:flex;align-items:center;gap:9px;font-size:.8rem;color:#c9d1d9}
+.dot{width:15px;height:15px;border-radius:50%;flex-shrink:0;border:2px solid rgba(255,255,255,.15)}
+
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.info-card{background:#0d1117;border:1px solid #21262d;border-radius:7px;padding:9px;text-align:center}
+.info-card .lbl{font-size:.65rem;color:#8b949e;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}
+.info-card .val{font-size:.95rem;font-weight:700;color:#e6edf3}
+.info-card .val.ok{color:#3fb950}.info-card .val.bad{color:#f85149}.info-card .val.warn{color:#d29922}
+
+.btn{padding:9px 14px;border-radius:7px;border:none;cursor:pointer;font-size:.82rem;font-weight:600;font-family:'Inter',sans-serif;transition:all .17s;width:100%}
+.btn-primary{background:linear-gradient(135deg,#238636,#2ea043);color:#fff}
+.btn-primary:hover{opacity:.85;transform:translateY(-1px)}
+.btn-secondary{background:#21262d;color:#c9d1d9;border:1px solid #30363d}
+.btn-secondary:hover{background:#30363d}
+.btn-danger{background:linear-gradient(135deg,#b91c1c,#ef4444);color:#fff}
+.btn-danger:hover{opacity:.85}
+
+.banner{padding:10px;border-radius:7px;font-size:.82rem;font-weight:600;text-align:center;display:none}
+.banner.ok{background:rgba(63,185,80,.12);border:1px solid rgba(63,185,80,.35);color:#3fb950;display:block}
+.banner.bad{background:rgba(248,81,73,.12);border:1px solid rgba(248,81,73,.35);color:#f85149;display:block}
+.banner.info{background:rgba(88,166,255,.12);border:1px solid rgba(88,166,255,.35);color:#58a6ff;display:block}
+
+.log{background:#0d1117;border:1px solid #21262d;border-radius:7px;padding:9px;font-size:.72rem;color:#8b949e;line-height:1.75;max-height:150px;overflow-y:auto;font-family:'Courier New',monospace}
+.log .ok{color:#3fb950}.log .err{color:#f85149}.log .info2{color:#58a6ff}.log .warn{color:#d29922}
+
+select{background:#0d1117;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;padding:5px 9px;font-size:.8rem;font-family:'Inter',sans-serif;cursor:pointer;width:100%}
+.row{display:flex;align-items:center;gap:7px}
+.row label{font-size:.75rem;color:#8b949e;white-space:nowrap;min-width:60px}
+input[type=range]{flex:1;accent-color:#58a6ff}
+.row span{font-size:.75rem;color:#c9d1d9;min-width:28px;text-align:right}
+
+.mode-tabs{display:flex;gap:4px}
+.mtab{flex:1;padding:6px;font-size:.73rem;font-weight:600;font-family:'Inter',sans-serif;border:1px solid #30363d;border-radius:6px;cursor:pointer;text-align:center;background:#0d1117;color:#8b949e;transition:all .15s}
+.mtab.active{background:#1f6feb;border-color:#388bfd;color:#fff}
+</style>
+</head>
+<body>
+<h1>🎱 九球撞球模擬器</h1>
+<p class="subtitle">目標球被兩顆障礙球擋住 — 利用邊框反彈，計算最佳擊球角度進洞</p>
+
+<div class="layout">
+  <!-- Canvas -->
+  <div class="canvas-wrap">
+    <canvas id="c"></canvas>
+  </div>
+
+  <!-- Panel -->
+  <div class="panel">
+    <div>
+      <h3>球的說明</h3>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <div class="legend-item"><div class="dot" style="background:#f0f0f0"></div>白球（母球）</div>
+        <div class="legend-item"><div class="dot" style="background:#f59e0b"></div>目標球（9號球）</div>
+        <div class="legend-item"><div class="dot" style="background:#ef4444"></div>障礙球 A</div>
+        <div class="legend-item"><div class="dot" style="background:#3b82f6"></div>障礙球 B</div>
+        <div class="legend-item"><div class="dot" style="background:rgba(255,255,255,.25);border:2px dashed #aaa"></div>幽靈球（接觸點）</div>
+      </div>
+    </div>
+
+    <div>
+      <h3>操作模式</h3>
+      <div class="mode-tabs" style="margin-top:6px">
+        <div class="mtab active" id="tab-auto" onclick="setMode('auto')">自動計算</div>
+        <div class="mtab" id="tab-drag" onclick="setMode('drag')">手動拖曳</div>
+      </div>
+      <p style="font-size:.72rem;color:#8b949e;margin-top:5px" id="mode-hint">自動找最佳反彈路徑</p>
+    </div>
+
+    <div>
+      <h3>目標袋口</h3>
+      <select id="pocketSel" onchange="recompute()">
+        <option value="-1">自動（最佳袋口）</option>
+        <option value="0">左上角袋</option>
+        <option value="1">中上袋</option>
+        <option value="2">右上角袋</option>
+        <option value="3">左下角袋</option>
+        <option value="4">中下袋</option>
+        <option value="5">右下角袋</option>
+      </select>
+    </div>
+
+    <div>
+      <h3>擊球速度</h3>
+      <div class="row">
+        <label>速度</label>
+        <input type="range" id="spd" min="2" max="20" value="8" oninput="this.nextElementSibling.textContent=this.value">
+        <span>8</span>
+      </div>
+    </div>
+
+    <div class="banner" id="banner">—</div>
+
+    <div>
+      <h3>路徑資訊</h3>
+      <div class="info-grid">
+        <div class="info-card"><div class="lbl">反彈邊</div><div class="val" id="iWall">—</div></div>
+        <div class="info-card"><div class="lbl">入射角</div><div class="val" id="iAngle">—</div></div>
+        <div class="info-card"><div class="lbl">目標袋口</div><div class="val" id="iPocket">—</div></div>
+        <div class="info-card"><div class="lbl">折射點安全</div><div class="val" id="iBP">—</div></div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn btn-primary" onclick="recompute();animShot()">▶ 計算並擊球</button>
+      <button class="btn btn-secondary" onclick="randomScene()">🔀 隨機場景</button>
+      <button class="btn btn-danger" onclick="stopAnim()">⏹ 停止動畫</button>
+    </div>
+
+    <div>
+      <h3>計算記錄</h3>
+      <div class="log" id="log">等待計算…</div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   TABLE GEOMETRY
+   Standard pool: 9×4.5 ft → ratio 2:1
+   Long side: 3 pockets (2 corners + 1 middle)
+   Short side: 2 pockets (2 corners only)
+   ========================================================= */
+const RAIL   = 44;   // rail width px
+const CW     = 780;  // canvas width  (long side)
+const CH     = 430;  // canvas height (short side) → ratio ~1.81:1 ≈ 2:1
+
+const canvas = document.getElementById('c');
+canvas.width  = CW;
+canvas.height = CH;
+const ctx = canvas.getContext('2d');
+
+const TL = RAIL, TR = CW-RAIL, TT = RAIL, TB = CH-RAIL;
+const TW = TR-TL, TH = TB-TT;
+
+const BALL_R   = 13;
+const POCKET_R = 16;  // capture radius for sinking
+const BLOCKED_FACTOR = 1.85; // how close (× BALL_R) to count as blocked
+
+// 6 pockets: long axis middle pockets on top/bottom
+const POCKETS = [
+  {x:TL,       y:TT,       label:'左上'},
+  {x:TL+TW/2,  y:TT,       label:'中上'},
+  {x:TR,       y:TT,       label:'右上'},
+  {x:TL,       y:TB,       label:'左下'},
+  {x:TL+TW/2,  y:TB,       label:'中下'},
+  {x:TR,       y:TB,       label:'右下'},
+];
+
+/* =========================================================
+   BALLS
+   ========================================================= */
+let balls = {};
+function initBalls(){
+  balls = {
+    white :{x:TL+TW*.16, y:TT+TH*.50, r:BALL_R, color:'#f0f0f0', label:'母'},
+    target:{x:TL+TW*.68, y:TT+TH*.50, r:BALL_R, color:'#f59e0b', label:'9'},
+    obsA  :{x:TL+TW*.43, y:TT+TH*.50-BALL_R*1.55, r:BALL_R, color:'#ef4444', label:'A'},
+    obsB  :{x:TL+TW*.43, y:TT+TH*.50+BALL_R*1.55, r:BALL_R, color:'#3b82f6', label:'B'},
+  };
+}
+initBalls();
+
+/* =========================================================
+   MATH
+   ========================================================= */
+const v2=(a,b)=>({x:b.x-a.x,y:b.y-a.y});
+const len=(v)=>Math.hypot(v.x,v.y);
+const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+const norm=(v)=>{const l=len(v)||1;return{x:v.x/l,y:v.y/l}};
+const add=(a,b)=>({x:a.x+b.x,y:a.y+b.y});
+const scale=(v,s)=>({x:v.x*s,y:v.y*s});
+const lerp=(a,b,t)=>({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t});
+const clamp=(v,lo,hi)=>Math.min(Math.max(v,lo),hi);
+
+// Minimum dist from segment AB to point P
+function segDist(a,b,p){
+  const dx=b.x-a.x,dy=b.y-a.y,len2=dx*dx+dy*dy;
+  if(len2===0)return dist(a,p);
+  const t=clamp(((p.x-a.x)*dx+(p.y-a.y)*dy)/len2,0,1);
+  return Math.hypot(p.x-(a.x+t*dx),p.y-(a.y+t*dy));
+}
+
+/* Is segment A→B blocked by any obstacle ball?
+   excludeKeys: ball keys to ignore
+   margin: how many radii apart to count as blocked */
+function segBlocked(a,b,excludeKeys=[],margin=BALL_R*BLOCKED_FACTOR){
+  for(const[k,ball] of Object.entries(balls)){
+    if(excludeKeys.includes(k)) continue;
+    if(segDist(a,b,ball)<margin) return true;
+  }
+  return false;
+}
+
+/* Direct path blocked by obsA AND obsB? */
+function directBlocked(){
+  const w=balls.white,t=balls.target;
+  let blockCount=0;
+  for(const k of ['obsA','obsB']){
+    if(segDist(w,t,balls[k])<BALL_R*BLOCKED_FACTOR) blockCount++;
+  }
+  return blockCount>=2;
+}
+
+/* =========================================================
+   IMAGE-METHOD REFLECTION
+   wall: 0=top  1=bottom  2=left  3=right
+   ========================================================= */
+function reflectPt(p,wall){
+  switch(wall){
+    case 0:return{x:p.x,y:2*TT-p.y};
+    case 1:return{x:p.x,y:2*TB-p.y};
+    case 2:return{x:2*TL-p.x,y:p.y};
+    case 3:return{x:2*TR-p.x,y:p.y};
+  }
+}
+
+/* Intersect line src→dst with wall line */
+function intersectWall(src,dst,wall){
+  const dx=dst.x-src.x, dy=dst.y-src.y;
+  let t,pt;
+  switch(wall){
+    case 0:if(Math.abs(dy)<1e-9)return null;t=(TT-src.y)/dy;pt={x:src.x+t*dx,y:TT};break;
+    case 1:if(Math.abs(dy)<1e-9)return null;t=(TB-src.y)/dy;pt={x:src.x+t*dx,y:TB};break;
+    case 2:if(Math.abs(dx)<1e-9)return null;t=(TL-src.x)/dx;pt={x:TL,y:src.y+t*dy};break;
+    case 3:if(Math.abs(dx)<1e-9)return null;t=(TR-src.x)/dx;pt={x:TR,y:src.y+t*dy};break;
+  }
+  if(t<0)return null;
+  return pt;
+}
+
+/* Is bounce point within the valid section of the wall? */
+function bpValid(bp,wall){
+  if(!bp)return false;
+  const M=BALL_R+1;
+  switch(wall){
+    case 0:case 1:return bp.x>=TL+M&&bp.x<=TR-M;
+    case 2:case 3:return bp.y>=TT+M&&bp.y<=TB-M;
+  }
+}
+
+/* Is a point too close to any pocket? (would accidentally drop in) */
+function nearPocket(pt,skipIdx=-1){
+  for(let i=0;i<POCKETS.length;i++){
+    if(i===skipIdx)continue;
+    if(dist(pt,POCKETS[i])<POCKET_R+BALL_R)return true;
+  }
+  return false;
+}
+
+/* Wall display name */
+const WALL_NAME=['上邊框','下邊框','左邊框','右邊框'];
+
+/* =========================================================
+   CORE ALGORITHM
+   ========================================================= */
+/*
+  Correct physics for bank shot:
+  1. Pick target pocket P
+  2. Ghost-ball position G: one ball-diameter (2R) BEHIND target ball,
+     along the line from P to target. This is where the white ball
+     must be AT the moment of contact.
+  3. Find a bank path from white→wall→G (using image method)
+  4. Validate:
+     a. white→BP segment not blocked by obstacles
+     b. BP not near any pocket (ball would accidentally drop)
+     c. BP→G segment not blocked
+     d. After collision, target travels G→P (no obstacle in that path)
+  5. Score by total path length (shorter = better)
+*/
+function compute(){
+  const W=balls.white, TGT=balls.target;
+  const pocketFilter=parseInt(document.getElementById('pocketSel').value);
+  const pockets=pocketFilter>=0?[{...POCKETS[pocketFilter],idx:pocketFilter}]
+                               :POCKETS.map((p,i)=>({...p,idx:i}));
+
+  clearLog();
+  log('info2','▶ 開始計算…');
+
+  // Phase 1: check if direct shot is blocked
+  const blocked=directBlocked();
+  log(blocked?'warn':'ok', blocked?'✗ 直線被2顆球阻擋，需反彈':'⚠ 直線未完全阻擋，仍計算反彈');
+
+  const results=[];
+
+  for(const pocket of pockets){
+    // --- Ghost ball position ---
+    // Direction: from pocket toward target
+    const ptDir=norm(v2(pocket,TGT));   // unit vec from pocket → target
+    // Ghost ball center = target center + ptDir * 2R
+    const G={
+      x:TGT.x+ptDir.x*BALL_R*2,
+      y:TGT.y+ptDir.y*BALL_R*2,
+    };
+    // G must be inside table
+    if(G.x<TL+BALL_R||G.x>TR-BALL_R||G.y<TT+BALL_R||G.y>TB-BALL_R) continue;
+
+    // --- Target → Pocket path check ---
+    // (after collision target must travel toward pocket unobstructed)
+    if(segBlocked(TGT,pocket,['white','target'],BALL_R*1.9)) continue;
+
+    // --- Try 1-bounce on each wall ---
+    for(let wall=0;wall<4;wall++){
+      // Reflect ghost ball through wall
+      const Grefl=reflectPt(G,wall);
+      // Bounce point = intersection of line(White→Grefl) with wall
+      const bp=intersectWall(W,Grefl,wall);
+      if(!bpValid(bp,wall)) continue;
+
+      // --- Validate: bp must not be near any pocket ---
+      if(nearPocket(bp)){
+        log('warn',`  壁面 ${WALL_NAME[wall]} 折射點靠近袋口，跳過`);
+        continue;
+      }
+
+      // --- White → BP: must not be blocked by obs balls ---
+      if(segBlocked(W,bp,['white'],BALL_R*1.8)) continue;
+
+      // --- BP → G: must not be blocked ---
+      if(segBlocked(bp,G,['white','target'],BALL_R*1.8)) continue;
+
+      // Incidence angle
+      const dxIn=bp.x-W.x, dyIn=bp.y-W.y;
+      const angleIn=Math.atan2(dyIn,dxIn)*180/Math.PI;
+
+      // Score: shorter total path = better
+      const score=dist(W,bp)+dist(bp,G)+dist(TGT,pocket);
+
+      results.push({wall,pocket,G,bp,angleIn,score,
+        path:[
+          {x:W.x,y:W.y},
+          {x:bp.x,y:bp.y},
+          {x:G.x,y:G.y},          // cue ball arrives here → hits target
+          {x:TGT.x,y:TGT.y},
+          {x:pocket.x,y:pocket.y},
+        ]
+      });
+    }
+  }
+
+  if(results.length===0){
+    log('err','✗ 找不到可行反彈路徑');
+    setBanner('bad','❌ 無可行路徑 — 嘗試切換袋口或調整球位');
+    setInfoCards(null);
+    return null;
+  }
+
+  results.sort((a,b)=>a.score-b.score);
+  const best=results[0];
+  log('ok',`✓ 找到 ${results.length} 條路徑`);
+  log('ok',`  最佳：${WALL_NAME[best.wall]} → ${best.pocket.label}袋`);
+  log('info2',`  入射角：${best.angleIn.toFixed(1)}°`);
+  log('info2',`  路徑分：${best.score.toFixed(0)}`);
+  setBanner('ok',`✅ 已找到最佳路徑 — 反彈至${best.pocket.label}袋`);
+  setInfoCards(best);
+  return best;
+}
+
+/* =========================================================
+   ANIMATION
+   ========================================================= */
+let animHandle=null;
+let currentResult=null;
+let animState=null;
+
+function recompute(){
+  stopAnim();
+  currentResult=compute();
+  drawScene(null);
+}
+
+function animShot(){
+  stopAnim();
+  currentResult=compute();
+  if(!currentResult)return;
+
+  const r=currentResult;
+  const spd=parseFloat(document.getElementById('spd').value);
+
+  /* Animation path:
+     Phase 1 (cue ball): W → BP → G
+     Phase 2 (target): TGT → Pocket
+  */
+  const cuePath=[r.path[0],r.path[1],r.path[2]]; // W,BP,G
+  const tgtStart={x:r.path[3].x, y:r.path[3].y};
+  const tgtEnd  ={x:r.path[4].x, y:r.path[4].y};
+
+  animState={
+    phase:'cue',
+    cuePath, tgtStart, tgtEnd,
+    cueBall:{x:r.path[0].x,y:r.path[0].y},
+    tgtBall:{x:r.path[3].x,y:r.path[3].y},
+    seg:0, t:0, spd,
+    done:false,
+  };
+
+  function tick(){
+    const s=animState;
+    if(!s||s.done){drawScene(null);return;}
+    if(s.phase==='cue'){
+      const from=s.cuePath[s.seg], to=s.cuePath[s.seg+1];
+      const d=dist(from,to)||1;
+      s.t+=s.spd/d;
+      if(s.t>=1){
+        s.t=0;s.seg++;
+        if(s.seg>=s.cuePath.length-1){
+          s.phase='target';s.seg=0;
+        }
+      }else{
+        s.cueBall=lerp(from,to,s.t);
+      }
+    }else{
+      const d=dist(s.tgtStart,s.tgtEnd)||1;
+      s.t+=s.spd/d;
+      if(s.t>=1){
+        s.done=true;
+        setBanner('ok','🎱 進洞！目標球入 '+currentResult.pocket.label+'袋');
+        log('ok','🎉 目標球成功進洞！');
+      }else{
+        s.tgtBall=lerp(s.tgtStart,s.tgtEnd,s.t);
+      }
+    }
+    drawScene(s);
+    animHandle=requestAnimationFrame(tick);
+  }
+  animHandle=requestAnimationFrame(tick);
+}
+
+function stopAnim(){
+  if(animHandle){cancelAnimationFrame(animHandle);animHandle=null;}
+  animState=null;
+}
+
+/* =========================================================
+   DRAWING
+   ========================================================= */
+function drawScene(s){
+  ctx.clearRect(0,0,CW,CH);
+  drawTable();
+  drawPockets();
+  if(currentResult) drawPath(currentResult,s);
+  drawBalls(s);
+}
+
+/* --- Table --- */
+function drawTable(){
+  // Rail
+  const rg=ctx.createLinearGradient(0,0,CW,CH);
+  rg.addColorStop(0,'#6b3a18');rg.addColorStop(1,'#3d1e06');
+  ctx.fillStyle=rg;ctx.fillRect(0,0,CW,CH);
+  // Felt
+  const fg=ctx.createLinearGradient(TL,TT,TR,TB);
+  fg.addColorStop(0,'#176040');fg.addColorStop(.5,'#1c7248');fg.addColorStop(1,'#145535');
+  ctx.fillStyle=fg;ctx.fillRect(TL,TT,TW,TH);
+  // Rail border line
+  ctx.strokeStyle='#8b5010';ctx.lineWidth=3;ctx.strokeRect(TL,TT,TW,TH);
+  // Center line (decorative)
+  ctx.beginPath();ctx.setLineDash([4,8]);
+  ctx.moveTo(TL+TW/2,TT+8);ctx.lineTo(TL+TW/2,TB-8);
+  ctx.strokeStyle='rgba(255,255,255,.06)';ctx.lineWidth=1;ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+/* --- Pockets --- */
+function drawPockets(){
+  POCKETS.forEach((p,i)=>{
+    // Outer shadow
+    ctx.beginPath();ctx.arc(p.x,p.y,POCKET_R+4,0,Math.PI*2);
+    ctx.fillStyle='rgba(0,0,0,.6)';ctx.fill();
+    // Pocket hole
+    ctx.beginPath();ctx.arc(p.x,p.y,POCKET_R,0,Math.PI*2);
+    ctx.fillStyle='#000';ctx.fill();
+    ctx.strokeStyle='#5a3008';ctx.lineWidth=2;ctx.stroke();
+  });
+  // Highlight selected pocket
+  if(currentResult){
+    const tp=currentResult.pocket;
+    ctx.beginPath();ctx.arc(tp.x,tp.y,POCKET_R+6,0,Math.PI*2);
+    ctx.strokeStyle='rgba(245,158,11,.85)';ctx.lineWidth=2.5;
+    ctx.setLineDash([4,3]);ctx.stroke();ctx.setLineDash([]);
+  }
+}
+
+/* --- Path guides --- */
+function drawPath(r,s){
+  // Direct blocked line (red)
+  ctx.beginPath();
+  ctx.moveTo(balls.white.x,balls.white.y);
+  ctx.lineTo(balls.target.x,balls.target.y);
+  ctx.strokeStyle='rgba(239,68,68,.3)';ctx.lineWidth=1.8;
+  ctx.setLineDash([5,5]);ctx.stroke();ctx.setLineDash([]);
+
+  // White ball path: W → BP
+  drawSegment(r.path[0],r.path[1],'rgba(220,220,220,.85)',2.5);
+  drawArrow(r.path[0],r.path[1],'rgba(220,220,220,.9)');
+
+  // BP → G (ghost ball)
+  drawSegment(r.path[1],r.path[2],'rgba(220,220,220,.65)',2.5);
+  drawArrow(r.path[1],r.path[2],'rgba(220,220,220,.8)');
+
+  // Target → Pocket
+  drawSegment(r.path[3],r.path[4],'rgba(245,158,11,.8)',2.5);
+  drawArrow(r.path[3],r.path[4],'rgba(245,158,11,.9)');
+
+  // Bounce point marker
+  const bp=r.path[1];
+  ctx.beginPath();ctx.arc(bp.x,bp.y,6,0,Math.PI*2);
+  ctx.fillStyle='rgba(251,191,36,.95)';ctx.fill();
+  ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();
+
+  // -- Angle arcs at BP --
+  drawAngleArc(bp,r.path[0],r.path[2],r.wall);
+
+  // Ghost ball (dashed circle at G)
+  const G=r.path[2];
+  ctx.beginPath();ctx.arc(G.x,G.y,BALL_R,0,Math.PI*2);
+  ctx.strokeStyle='rgba(255,255,255,.5)';ctx.lineWidth=1.5;
+  ctx.setLineDash([3,3]);ctx.stroke();ctx.setLineDash([]);
+}
+
+function drawSegment(a,b,color,lw){
+  ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);
+  ctx.strokeStyle=color;ctx.lineWidth=lw;
+  ctx.setLineDash([8,5]);ctx.stroke();ctx.setLineDash([]);
+}
+
+function drawArrow(from,to,color){
+  const d=dist(from,to);if(d<25)return;
+  const ux=(to.x-from.x)/d,uy=(to.y-from.y)/d;
+  const mx=from.x+ux*d*.65,my=from.y+uy*d*.65;
+  const sz=8;
+  ctx.beginPath();
+  ctx.moveTo(mx+ux*sz,my+uy*sz);
+  ctx.lineTo(mx-uy*(sz*.5),my+ux*(sz*.5));
+  ctx.lineTo(mx+uy*(sz*.5),my-ux*(sz*.5));
+  ctx.closePath();ctx.fillStyle=color;ctx.fill();
+}
+
+/* Draw θ=θ angle arcs at bounce point */
+function drawAngleArc(bp,incoming,outgoing,wall){
+  // Normal angle for wall
+  const normalAngle = (wall===0||wall===1) ? -Math.PI/2 : 0;
+  const aIn  = Math.atan2(bp.y-incoming.y, bp.x-incoming.x); // from incoming
+  const aOut = Math.atan2(outgoing.y-bp.y, outgoing.x-bp.x); // to outgoing
+
+  const r2=28;
+  ctx.strokeStyle='rgba(248,200,80,.85)';ctx.lineWidth=1.5;
+
+  // Arc for incoming angle
+  ctx.beginPath();
+  ctx.arc(bp.x,bp.y,r2,normalAngle,aIn+Math.PI,true);
+  ctx.stroke();
+
+  // Arc for outgoing angle
+  ctx.beginPath();
+  ctx.arc(bp.x,bp.y,r2,normalAngle,aOut,false);
+  ctx.stroke();
+
+  // θ label
+  ctx.fillStyle='rgba(248,200,80,.95)';
+  ctx.font='bold 11px Inter';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText('θ',bp.x-18*(wall<2?0:1),bp.y+(wall<2?18:0));
+  ctx.fillText('θ',bp.x+18*(wall<2?0:1),bp.y+(wall<2?18:0));
+}
+
+/* --- Balls --- */
+function drawBalls(s){
+  const pos={
+    white:{...balls.white},
+    target:{...balls.target},
+    obsA:balls.obsA,
+    obsB:balls.obsB,
+  };
+  if(s){
+    if(s.cueBall) pos.white={...balls.white,...s.cueBall};
+    if(s.tgtBall) pos.target={...balls.target,...s.tgtBall};
+    if(s.done) pos.target=null; // sunk
+  }
+  for(const k of ['obsA','obsB','target','white']){
+    if(!pos[k])continue;
+    drawBall(pos[k].x,pos[k].y,balls[k].r,balls[k].color,balls[k].label);
+  }
+}
+
+function drawBall(x,y,r,color,label){
+  // Shadow
+  ctx.beginPath();ctx.arc(x+2,y+3,r,0,Math.PI*2);
+  ctx.fillStyle='rgba(0,0,0,.38)';ctx.fill();
+  // Gradient
+  const g=ctx.createRadialGradient(x-r*.36,y-r*.36,r*.08,x,y,r);
+  g.addColorStop(0,adj(color,65));g.addColorStop(.55,color);g.addColorStop(1,adj(color,-55));
+  ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=g;ctx.fill();
+  // Specular
+  ctx.beginPath();ctx.arc(x-r*.3,y-r*.32,r*.22,0,Math.PI*2);
+  ctx.fillStyle='rgba(255,255,255,.52)';ctx.fill();
+  // Label
+  ctx.fillStyle=color==='#f0f0f0'?'#333':'#fff';
+  ctx.font=`bold ${r*.88}px Inter`;ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(label,x,y+.5);
+}
+
+function adj(hex,amt){
+  const n=parseInt(hex.replace('#',''),16);
+  const clm=(v)=>Math.min(255,Math.max(0,v));
+  return`rgb(${clm((n>>16&255)+amt)},${clm((n>>8&255)+amt)},${clm((n&255)+amt)})`;
+}
+
+/* =========================================================
+   UI HELPERS
+   ========================================================= */
+function setInfoCards(r){
+  if(!r){
+    ['iWall','iAngle','iPocket','iBP'].forEach(id=>document.getElementById(id).textContent='—');
+    return;
+  }
+  const bpSafe=!nearPocket(r.bp);
+  document.getElementById('iWall').textContent  =WALL_NAME[r.wall];
+  document.getElementById('iAngle').textContent =r.angleIn.toFixed(1)+'°';
+  document.getElementById('iPocket').textContent=r.pocket.label+'袋';
+  const bpEl=document.getElementById('iBP');
+  bpEl.textContent=bpSafe?'✓ 安全':'✗ 靠近袋口';
+  bpEl.className='val '+(bpSafe?'ok':'bad');
+}
+
+function setBanner(type,text){
+  const el=document.getElementById('banner');
+  el.className='banner '+type;el.textContent=text;
+}
+
+function clearLog(){document.getElementById('log').innerHTML=''}
+function log(cls,txt){
+  const el=document.getElementById('log');
+  const sp=document.createElement('span');
+  sp.className=cls;sp.textContent=txt+'\n';
+  el.appendChild(sp);el.scrollTop=el.scrollHeight;
+}
+
+/* =========================================================
+   MODE & DRAG
+   ========================================================= */
+let mode='auto', dragging=null;
+
+function setMode(m){
+  mode=m;
+  document.getElementById('tab-auto').classList.toggle('active',m==='auto');
+  document.getElementById('tab-drag').classList.toggle('active',m==='drag');
+  document.getElementById('mode-hint').textContent=
+    m==='auto'?'自動找最佳反彈路徑':'拖曳任意球後自動重算';
+}
+
+canvas.addEventListener('mousedown',e=>{
+  if(mode!=='drag')return;
+  const rect=canvas.getBoundingClientRect();
+  const sx=CW/rect.width,sy=CH/rect.height;
+  const mx=(e.clientX-rect.left)*sx,my=(e.clientY-rect.top)*sy;
+  for(const[k,b] of Object.entries(balls)){
+    if(dist({x:mx,y:my},b)<b.r+6){dragging={k,ox:mx-b.x,oy:my-b.y};break;}
+  }
+});
+canvas.addEventListener('mousemove',e=>{
+  if(!dragging)return;
+  const rect=canvas.getBoundingClientRect();
+  const sx=CW/rect.width,sy=CH/rect.height;
+  const mx=(e.clientX-rect.left)*sx,my=(e.clientY-rect.top)*sy;
+
+  // Desired position (clamped to table)
+  let nx=clamp(mx-dragging.ox,TL+BALL_R,TR-BALL_R);
+  let ny=clamp(my-dragging.oy,TT+BALL_R,TB-BALL_R);
+
+  // Collision resolution: push back if overlapping any other ball
+  const MIN_DIST=BALL_R*2;
+  for(const[k,other] of Object.entries(balls)){
+    if(k===dragging.k) continue;
+    const dx=nx-other.x, dy=ny-other.y;
+    const d=Math.hypot(dx,dy);
+    if(d<MIN_DIST && d>0.01){
+      // Push the dragged ball to exactly MIN_DIST away along collision axis
+      const ux=dx/d, uy=dy/d;
+      nx=other.x+ux*MIN_DIST;
+      ny=other.y+uy*MIN_DIST;
+      // Re-clamp after push
+      nx=clamp(nx,TL+BALL_R,TR-BALL_R);
+      ny=clamp(ny,TT+BALL_R,TB-BALL_R);
+    }
+  }
+
+  balls[dragging.k].x=nx;
+  balls[dragging.k].y=ny;
+  stopAnim();currentResult=null;drawScene(null);
+});
+canvas.addEventListener('mouseup',()=>{
+  if(dragging){dragging=null;recompute();}
+});
+
+/* =========================================================
+   RANDOMIZE
+   ========================================================= */
+function randomScene(){
+  stopAnim();currentResult=null;
+  const rnd=(lo,hi)=>lo+Math.random()*(hi-lo);
+
+  balls.white.x=rnd(TL+30,TL+TW*.32);
+  balls.white.y=rnd(TT+30,TB-30);
+
+  balls.target.x=rnd(TL+TW*.55,TR-30);
+  balls.target.y=rnd(TT+30,TB-30);
+
+  // Place obstacles roughly on direct line with spread
+  const cx=(balls.white.x+balls.target.x)*0.5;
+  const cy=(balls.white.y+balls.target.y)*0.5;
+  const spread=BALL_R*2.5;
+  balls.obsA.x=clamp(cx+rnd(-20,15),TL+BALL_R,TR-BALL_R);
+  balls.obsA.y=clamp(cy-spread+rnd(-BALL_R,BALL_R),TT+BALL_R,TB-BALL_R);
+  balls.obsB.x=clamp(cx+rnd(-15,20),TL+BALL_R,TR-BALL_R);
+  balls.obsB.y=clamp(cy+spread+rnd(-BALL_R,BALL_R),TT+BALL_R,TB-BALL_R);
+
+  recompute();
+}
+
+/* =========================================================
+   INIT
+   ========================================================= */
+recompute();
+</script>
+</body>
+</html>
