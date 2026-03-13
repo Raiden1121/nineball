@@ -120,6 +120,16 @@ input[type=range]{flex:1;accent-color:#58a6ff}
     </div>
 
     <div>
+      <h3>反彈次數限制</h3>
+      <select id="bounceSel" onchange="recompute()">
+        <option value="0">自動（優先1次，不足才2次）</option>
+        <option value="1">僅 1 次反彈</option>
+        <option value="2">僅 2 次反彈</option>
+        <option value="3">最多 2 次（全部嘗試）</option>
+      </select>
+    </div>
+
+    <div>
       <h3>擊球速度</h3>
       <div class="row">
         <label>速度</label>
@@ -310,38 +320,30 @@ const WALL_NAME=['上邊框','下邊框','左邊框','右邊框'];
 function compute(){
   const W=balls.white, TGT=balls.target;
   const pocketFilter=parseInt(document.getElementById('pocketSel').value);
+  // bounceMode: 0=auto(prefer 1, fallback 2), 1=1-only, 2=2-only, 3=both(all)
+  const bounceMode=parseInt(document.getElementById('bounceSel').value);
   const pockets=pocketFilter>=0?[{...POCKETS[pocketFilter],idx:pocketFilter}]
                                :POCKETS.map((p,i)=>({...p,idx:i}));
 
   clearLog();
-  log('info2','▶ 開始計算…');
+  log('info2',`▶ 開始計算… 模式：${ ['自動','僅1次','僅2次','1+2次全搜'][bounceMode] }`);
 
-  // Phase 1: check if direct shot is blocked
   const blocked=directBlocked();
   log(blocked?'warn':'ok', blocked?'✗ 直線被2顆球阻擋，需反彈':'⚠ 直線未完全阻擋，仍計算反彈');
 
   const results=[];
 
   for(const pocket of pockets){
-    // --- Ghost ball position ---
-    // Direction: from pocket toward target
-    const ptDir=norm(v2(pocket,TGT));   // unit vec from pocket → target
-    // Ghost ball center = target center + ptDir * 2R
+    const ptDir=norm(v2(pocket,TGT));
     const G={
       x:TGT.x+ptDir.x*BALL_R*2,
       y:TGT.y+ptDir.y*BALL_R*2,
     };
-    // G must be inside table
     if(G.x<TL+BALL_R||G.x>TR-BALL_R||G.y<TT+BALL_R||G.y>TB-BALL_R) continue;
+    if(segBlocked(TGT,pocket,['white','target'],BALL_R*2)) continue;
 
-    // --- Target → Pocket path check ---
-    // A ball of radius R needs 2R clearance from any obstacle center
-    if(segBlocked(TGT,pocket,['white','target'],BALL_R*2)){
-      log('warn',`  ${pocket.label}袋：目標球→袋口路徑被阻，跳過`);
-      continue;
-    }
-
-    // --- Try 1-bounce on each wall ---
+    // ── 1-BOUNCE (skip if mode is "2-only") ───────────────
+    if(bounceMode!==2){
     for(let wall=0;wall<4;wall++){
       const Grefl=reflectPt(G,wall);
       const bp=intersectWall(W,Grefl,wall);
@@ -366,15 +368,15 @@ function compute(){
         ]
       });
     }
+    } // end if(bounceMode!==2) → 1-bounce block
 
-    // --- Try 2-bounce (auto fallback) ---
-    // Image method: White → Wall1(bp1) → Wall2(bp2) → G
-    // G' = reflect G through w2; G'' = reflect G' through w1
-    // bp1 = line(W→G'') ∩ w1;  bp2 = line(bp1→G') ∩ w2
+    // ── 2-BOUNCE: run when mode is 2-only(2), both(3), or auto(0) with no 1-bounce found ──
+    const need2 = bounceMode===2 || bounceMode===3
+               || (bounceMode===0 && results.length===0);
+    if(need2){
     for(let w1=0;w1<4;w1++){
       for(let w2=0;w2<4;w2++){
         if(w1===w2) continue;
-        // Skip opposing walls (ball would have to pass through table)
         if((w1===0&&w2===1)||(w1===1&&w2===0)) continue;
         if((w1===2&&w2===3)||(w1===3&&w2===2)) continue;
 
@@ -409,6 +411,7 @@ function compute(){
         });
       }
     }
+    } // end if(need2) → 2-bounce block
   }
 
   if(results.length===0){
