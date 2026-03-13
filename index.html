@@ -585,16 +585,23 @@ function drawPath(r,s){
   drawSegment(path[n-2],path[n-1],'rgba(245,158,11,.8)',2.5);
   drawArrow(path[n-2],path[n-1],'rgba(245,158,11,.9)');
 
-  // Bounce point markers (all intermediate pts: path[1] .. path[n-3])
+  // Bounce point markers + angle arcs
   for(let i=1;i<=n-3;i++){
     const bp=path[i];
-    ctx.beginPath();ctx.arc(bp.x,bp.y,6,0,Math.PI*2);
+    ctx.beginPath();ctx.arc(bp.x,bp.y,5,0,Math.PI*2);
     ctx.fillStyle='rgba(251,191,36,.95)';ctx.fill();
     ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();
-    // θ label near bounce point
-    ctx.fillStyle='rgba(248,200,80,.9)';
-    ctx.font='bold 10px Inter';ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.fillText('θ',bp.x,bp.y-14);
+
+    // Detect which wall this bp is on
+    let wall=-1;
+    if(Math.abs(bp.y-TT)<2) wall=0; // top
+    else if(Math.abs(bp.y-TB)<2) wall=1; // bottom
+    else if(Math.abs(bp.x-TL)<2) wall=2; // left
+    else if(Math.abs(bp.x-TR)<2) wall=3; // right
+
+    if(wall>=0){
+      drawAngleArc(bp, path[i-1], path[i+1], wall);
+    }
   }
 
   // Ghost ball (dashed circle at G = path[n-3])
@@ -622,31 +629,74 @@ function drawArrow(from,to,color){
   ctx.closePath();ctx.fillStyle=color;ctx.fill();
 }
 
-/* Draw θ=θ angle arcs at bounce point */
-function drawAngleArc(bp,incoming,outgoing,wall){
-  // Normal angle for wall
-  const normalAngle = (wall===0||wall===1) ? -Math.PI/2 : 0;
-  const aIn  = Math.atan2(bp.y-incoming.y, bp.x-incoming.x); // from incoming
-  const aOut = Math.atan2(outgoing.y-bp.y, outgoing.x-bp.x); // to outgoing
+/* Draw normal line + incidence/reflection angle arcs at a bounce point.
+   bp = bounce point, incoming = previous point, outgoing = next point
+   wall: 0=top, 1=bottom, 2=left, 3=right */
+function drawAngleArc(bp, incoming, outgoing, wall){
+  // Normal direction (pointing INTO the table from the wall)
+  let nx=0, ny=0;
+  switch(wall){
+    case 0: nx=0;ny=1;  break; // top wall → normal points down
+    case 1: nx=0;ny=-1; break; // bottom  → normal points up
+    case 2: nx=1;ny=0;  break; // left    → normal points right
+    case 3: nx=-1;ny=0; break; // right   → normal points left
+  }
+  const normalAngle=Math.atan2(ny,nx); // angle of inward normal
 
-  const r2=28;
-  ctx.strokeStyle='rgba(248,200,80,.85)';ctx.lineWidth=1.5;
-
-  // Arc for incoming angle
+  // Draw normal line (short dashed line along normal at bp)
+  const nLen=38;
   ctx.beginPath();
-  ctx.arc(bp.x,bp.y,r2,normalAngle,aIn+Math.PI,true);
+  ctx.moveTo(bp.x, bp.y);
+  ctx.lineTo(bp.x+nx*nLen, bp.y+ny*nLen);
+  ctx.strokeStyle='rgba(255,255,255,.45)';
+  ctx.lineWidth=1.2;
+  ctx.setLineDash([3,3]);ctx.stroke();ctx.setLineDash([]);
+
+  // Incoming ray direction (from incoming TO bp) → angle of arrival
+  const aIn=Math.atan2(bp.y-incoming.y, bp.x-incoming.x);
+  // Outgoing ray direction (from bp TO outgoing)
+  const aOut=Math.atan2(outgoing.y-bp.y, outgoing.x-bp.x);
+
+  // Incidence angle = angle between incoming ray and normal
+  // We want small arcs from the normal to the ray
+  const arcR=26;
+  ctx.lineWidth=1.8;
+
+  // Arc 1: incidence (normal → incoming direction)
+  // The incoming ray arrives at bp, so its direction at bp is aIn+PI (reversed)
+  const aInReversed = aIn; // direction the ball came FROM
+  ctx.beginPath();
+  ctx.strokeStyle='rgba(100,200,255,.85)';
+  drawArcBetween(bp.x,bp.y,arcR, normalAngle, aInReversed);
   ctx.stroke();
 
-  // Arc for outgoing angle
+  // Arc 2: reflection (normal → outgoing direction)
   ctx.beginPath();
-  ctx.arc(bp.x,bp.y,r2,normalAngle,aOut,false);
+  ctx.strokeStyle='rgba(255,200,80,.85)';
+  drawArcBetween(bp.x,bp.y,arcR, normalAngle, aOut);
   ctx.stroke();
 
-  // θ label
-  ctx.fillStyle='rgba(248,200,80,.95)';
+  // θ labels on each side
+  const lOff=arcR+11;
+  // Position labels at midpoint of each arc
+  const midIn=(normalAngle+aInReversed)/2;
+  const midOut=(normalAngle+aOut)/2;
+  ctx.fillStyle='rgba(100,200,255,.95)';
   ctx.font='bold 11px Inter';ctx.textAlign='center';ctx.textBaseline='middle';
-  ctx.fillText('θ',bp.x-18*(wall<2?0:1),bp.y+(wall<2?18:0));
-  ctx.fillText('θ',bp.x+18*(wall<2?0:1),bp.y+(wall<2?18:0));
+  ctx.fillText('θ',bp.x+Math.cos(midIn)*lOff, bp.y+Math.sin(midIn)*lOff);
+  ctx.fillStyle='rgba(255,200,80,.95)';
+  ctx.fillText('θ',bp.x+Math.cos(midOut)*lOff, bp.y+Math.sin(midOut)*lOff);
+}
+
+/* Helper: draw the shorter arc between two angles */
+function drawArcBetween(cx,cy,r,a1,a2){
+  // Normalise to [0, 2PI]
+  let s=((a1%(2*Math.PI))+(2*Math.PI))%(2*Math.PI);
+  let e=((a2%(2*Math.PI))+(2*Math.PI))%(2*Math.PI);
+  // Choose shorter arc direction
+  let diff=((e-s)%(2*Math.PI)+(2*Math.PI))%(2*Math.PI);
+  const ccw = diff > Math.PI;
+  ctx.arc(cx,cy,r,s,e,ccw);
 }
 
 /* --- Balls --- */
