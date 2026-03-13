@@ -664,7 +664,7 @@ function drawAngleArc(bp, incoming, outgoing, wall){
 
   // Arc 1: incidence (normal → incoming direction)
   // The incoming ray arrives at bp, so its direction at bp is aIn+PI (reversed)
-  const aInReversed = aIn; // direction the ball came FROM
+  const aInReversed = aIn + Math.PI; // reverse: direction FROM bp back toward incoming
   ctx.beginPath();
   ctx.strokeStyle='rgba(100,200,255,.85)';
   drawArcBetween(bp.x,bp.y,arcR, normalAngle, aInReversed);
